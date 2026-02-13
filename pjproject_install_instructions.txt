@@ -1,0 +1,66 @@
+VOIP PROJECT SETUP STEPS (ONE FILE GUIDE)
+
+1. Copy project to local machine
+- Unzip/copy the full project folder.
+- Do not copy someone else's real .env credentials.
+
+2. Install system packages (Ubuntu/WSL)
+Run:
+sudo apt update
+sudo apt install -y python3 python3-pip python3-venv build-essential pkg-config libasound2-dev libssl-dev libopus-dev libvpx-dev libavcodec-dev libavformat-dev libswscale-dev
+
+3. Open project directory
+Run:
+cd ~/voip
+
+4. Create and activate Python virtual environment
+Run:
+python3 -m venv myenv
+source myenv/bin/activate
+
+5. Install Python dependencies
+Run:
+pip install -r requirements.txt
+
+6. Download PJPROJECT source (if folder is not already present)
+Run:
+wget https://github.com/pjsip/pjproject/archive/refs/tags/2.15.1.tar.gz -O pjproject-2.15.1.tar.gz
+tar -xzf pjproject-2.15.1.tar.gz
+
+7. Build PJPROJECT (pjsua)
+Run:
+cd pjproject-2.15.1
+./configure --prefix=/usr --enable-shared
+make dep
+make -j"$(nproc)"
+cd ..
+
+8. Verify pjsua is available
+Run:
+./pjproject-2.15.1/pjsip-apps/bin/pjsua-x86_64-unknown-linux-gnu --help | head
+
+9. Create .env with local SIP credentials
+Use this format:
+SIP_ID=your_id
+SIP_PASS=your_password
+SIP_DOMAIN=your_domain
+SIP_PORT=5060
+PJSUA_PATH=./pjproject-2.15.1/pjsip-apps/bin/pjsua-x86_64-unknown-linux-gnu
+
+10. Confirm make_call.py reads PJSUA_PATH from environment
+It should use:
+PJSUA_PATH = os.getenv("PJSUA_PATH", "./pjproject-2.15.1/pjsip-apps/bin/pjsua-x86_64-unknown-linux-gnu")
+
+11. Start API server
+Run:
+uvicorn main:app --reload
+
+12. Test API endpoints
+Run:
+curl http://127.0.0.1:8000/status
+curl -X POST http://127.0.0.1:8000/call -H "Content-Type: application/json" -d '{"destination":"<countrycode+number>"}'
+curl -X POST http://127.0.0.1:8000/hangup
+
+13. Troubleshooting
+- If registration/call fails with 401/403/404/408, verify SIP ID, password, domain, and account status.
+- Use full international number format (country code + number), based on provider rules.
