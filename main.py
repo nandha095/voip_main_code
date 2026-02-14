@@ -6,7 +6,6 @@ from pydantic import BaseModel, Field
 from make_call import hangup_call, make_call
 
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import FastAPI, HTTPException
 
 app = FastAPI(title="SIP Call API")
 
