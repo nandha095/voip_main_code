@@ -11,6 +11,7 @@ SIP_ID = os.getenv("SIP_ID")
 SIP_PASS = os.getenv("SIP_PASS")
 SIP_DOMAIN = os.getenv("SIP_DOMAIN")
 SIP_PORT = os.getenv("SIP_PORT", "5060")
+CALL_TIMEOUT_SECONDS = int(os.getenv("CALL_TIMEOUT_SECONDS", "45"))
 
 # PJSUA_PATH can be overridden via .env per machine.
 PJSUA_PATH = os.getenv(
@@ -50,6 +51,7 @@ async def make_call(destination_number: str, status_callback=None) -> asyncio.su
 
     # Start monitoring output asynchronously
     asyncio.create_task(_monitor_call_output(process, status_callback))
+    asyncio.create_task(_auto_hangup_after_timeout(process, CALL_TIMEOUT_SECONDS, status_callback))
 
     return process
 
@@ -78,6 +80,24 @@ async def _monitor_call_output(process: asyncio.subprocess.Process, status_callb
     # Notify when process ends unexpectedly
     if status_callback:
         await status_callback(" Call process terminated")
+
+
+async def _auto_hangup_after_timeout(
+    process: asyncio.subprocess.Process,
+    timeout_seconds: int,
+    status_callback,
+):
+    """
+    Enforce a max call duration to avoid hanging/ringing forever.
+    """
+    if timeout_seconds <= 0:
+        return
+
+    await asyncio.sleep(timeout_seconds)
+    if process.returncode is None:
+        await hangup_call(process)
+        if status_callback:
+            await status_callback(f" Call auto-ended after {timeout_seconds}s timeout")
 
 
 async def hangup_call(process: asyncio.subprocess.Process) -> bool:

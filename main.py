@@ -22,6 +22,7 @@ app.add_middleware(
 
 active_call: asyncio.subprocess.Process | None = None
 active_destination: str | None = None
+call_lock = asyncio.Lock()
 
 
 class CallRequest(BaseModel):
@@ -40,41 +41,41 @@ async def root():
 @app.post("/call")
 async def api_make_call(payload: CallRequest):
     global active_call, active_destination
+    async with call_lock:
+        if active_call and active_call.returncode is None:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Call already active to {active_destination or 'unknown'}",
+            )
 
-    if active_call and active_call.returncode is None:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Call already active to {active_destination or 'unknown'}",
-        )
+        destination = payload.destination.strip()
+        if not destination:
+            raise HTTPException(status_code=422, detail="Destination cannot be empty")
 
-    destination = payload.destination.strip()
-    if not destination:
-        raise HTTPException(status_code=422, detail="Destination cannot be empty")
+        active_call = await make_call(destination, status_callback=None)
+        if not active_call:
+            raise HTTPException(status_code=500, detail="Failed to start call")
 
-    active_call = await make_call(destination, status_callback=None)
-    if not active_call:
-        raise HTTPException(status_code=500, detail="Failed to start call")
-
-    active_destination = destination
-    return {"status": "calling", "destination": destination}
+        active_destination = destination
+        return {"status": "calling", "destination": destination}
 
 
 @app.post("/hangup")
 async def api_hangup_call():
     global active_call, active_destination
+    async with call_lock:
+        if not active_call or active_call.returncode is not None:
+            raise HTTPException(status_code=400, detail="No active call")
 
-    if not active_call or active_call.returncode is not None:
-        raise HTTPException(status_code=400, detail="No active call")
+        success = await hangup_call(active_call)
+        ended_destination = active_destination
+        active_call = None
+        active_destination = None
 
-    success = await hangup_call(active_call)
-    ended_destination = active_destination
-    active_call = None
-    active_destination = None
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to terminate active call cleanly")
 
-    if not success:
-        raise HTTPException(status_code=500, detail="Failed to terminate active call cleanly")
-
-    return {"status": "ended", "destination": ended_destination}
+        return {"status": "ended", "destination": ended_destination}
 
 
 @app.get("/status")
